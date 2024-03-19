@@ -5,6 +5,7 @@
 package main
 
 import (
+	"math"
 	"math/rand"
 
 	"github.com/pointlander/datum/bible"
@@ -72,5 +73,27 @@ func main() {
 	}
 	verses := bible.GetVerses()
 	markov := Markov(verses)
-	_ = markov
+	buffer, index, n := make([]*[256]float32, 256), 0, 0
+	for _, verse := range verses {
+		a, b := 0, 0
+		for _, v := range verse.Verse {
+			buffer[index] = &markov[a][b]
+			a, b = int(v), a
+			sum, sumSquared := make([]float32, 256), make([]float32, 256)
+			if n > 0 {
+				i := (index + 256 - 1) % 256
+				for k, value := range *buffer[i] {
+					sum[k] += value
+					sumSquared[k] += value
+				}
+				mean, stddev := make([]float32, 256), make([]float32, 256)
+				for k, value := range sum {
+					mean[k] = value / float32(n)
+					stddev[k] = float32(math.Sqrt(float64((sumSquared[k] / float32(n)) - mean[k]*mean[k])))
+				}
+			}
+			index = (index + 1) % 256
+			n++
+		}
+	}
 }
