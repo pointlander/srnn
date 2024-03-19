@@ -5,7 +5,7 @@
 package main
 
 import (
-	"math"
+	"fmt"
 	"math/rand"
 
 	"github.com/pointlander/datum/bible"
@@ -74,22 +74,34 @@ func main() {
 	verses := bible.GetVerses()
 	markov := Markov(verses)
 	buffer, index, n := make([]*[256]float32, 256), 0, 0
-	for _, verse := range verses {
+	sum, sumSquared := make([]float32, Symbols), make([]float32, Symbols*Symbols)
+	mean, stddev := make([]float32, Symbols), make([]float32, Symbols*Symbols)
+	for x, verse := range verses {
+		fmt.Println(x)
 		a, b := 0, 0
+		for y := range sum {
+			sum[y] = 0
+		}
+		for y := range sumSquared {
+			sumSquared[y] = 0
+		}
 		for _, v := range verse.Verse {
 			buffer[index] = &markov[a][b]
 			a, b = int(v), a
-			sum, sumSquared := make([]float32, 256), make([]float32, 256)
 			if n > 0 {
 				i := (index + 256 - 1) % 256
-				for k, value := range *buffer[i] {
-					sum[k] += value
-					sumSquared[k] += value
+				for k1, value1 := range *buffer[i] {
+					sum[k1] += value1
+					for k2, value2 := range *buffer[i] {
+						sumSquared[k1*256+k2] += value1 * value2
+					}
 				}
-				mean, stddev := make([]float32, 256), make([]float32, 256)
+				n := float32(n)
 				for k, value := range sum {
-					mean[k] = value / float32(n)
-					stddev[k] = float32(math.Sqrt(float64((sumSquared[k] / float32(n)) - mean[k]*mean[k])))
+					mean[k] = value / n
+				}
+				for k, value := range sumSquared {
+					stddev[k] = (value / n) - mean[k/256]*mean[k%256]
 				}
 			}
 			index = (index + 1) % 256
