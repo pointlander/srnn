@@ -40,6 +40,8 @@ const (
 )
 
 var (
+	// FlagLearn learn mode
+	FlagLearn = flag.String("learn", "", "learn mode")
 	// FlagInference inference mode
 	FlagInference = flag.String("infer", "", "inference mode")
 )
@@ -108,9 +110,27 @@ func main() {
 	if *FlagInference != "" {
 		Inference()
 		return
-	} else {
+	} else if *FlagLearn == "srnn" {
 		Learn()
 		return
+	}
+
+	// markov multivariate
+	bible, err := bible.Load()
+	if err != nil {
+		panic(err)
+	}
+	verses := bible.GetVerses()
+	sm := NewSymbolMap(verses)
+	markov := make([][][][]float32, sm.Width)
+	for i := range markov {
+		markov[i] = make([][][]float32, sm.Width)
+		for j := range markov[i] {
+			markov[i][j] = make([][]float32, sm.Width)
+			for k := range markov[i][j] {
+				markov[i][j][k] = make([]float32, sm.Width)
+			}
+		}
 	}
 }
 
