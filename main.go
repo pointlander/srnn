@@ -79,6 +79,16 @@ func main() {
 		panic(err)
 	}
 	verses := bible.GetVerses()
+	sym, next := make(map[rune]int), 0
+	for _, verse := range verses {
+		for _, s := range verse.Verse {
+			if _, ok := sym[s]; !ok {
+				sym[s] = next
+				next++
+			}
+		}
+	}
+	fmt.Println(next, next*next)
 	markov := Markov(verses)
 	sum, sumSquared := make([]float32, Symbols), make([]float32, Symbols*Symbols)
 	mean, stddev := make([]float32, Symbols), make([]float32, Symbols*Symbols)
