@@ -160,22 +160,17 @@ func main() {
 		for y := range sumSquared {
 			sumSquared[y] = 0
 		}
-		buffer, index, n := make([][]float32, 256), 0, 0
-		cost := 0.0
+		buffer, cost := []float32{}, 0.0
 		set.Zero()
-		symbols := []rune(verse.Verse)
-		for vv, v := range symbols[:len(symbols)-1] {
-			buffer[index] = markov[sm.Map[a]][sm.Map[b]]
-			a, b = v, a
-			if n > 0 {
-				i := (index + 256 - 1) % 256
-				for k1, value1 := range buffer[i] {
+		for _, v := range verse.Verse {
+			if buffer != nil {
+				for k1, value1 := range buffer {
 					sum[k1] += value1
-					for k2, value2 := range buffer[i] {
+					for k2, value2 := range buffer {
 						sumSquared[k1*sm.Width+k2] += value1 * value2
 					}
 				}
-				n := float32(n)
+				n := float32(v)
 				s := float32(0)
 				for k, value := range sum {
 					mean[k] = value / n
@@ -204,10 +199,10 @@ func main() {
 					t++
 				}
 				s = 0
-				for _, value := range buffer[index] {
+				for _, value := range buffer {
 					s += value
 				}
-				for _, value := range buffer[index] {
+				for _, value := range buffer {
 					if s > 0 {
 						input.X[t] = float64(value / s)
 					} else {
@@ -218,12 +213,11 @@ func main() {
 				for k := range output.X {
 					output.X[k] = 0
 				}
-				output.X[sm.Map[symbols[vv+1]]] = 1
+				output.X[sm.Map[v]] = 1
 				cost += tf64.Gradient(loss).X[0]
 			}
-
-			index = (index + 1) % 256
-			n++
+			buffer = markov[sm.Map[a]][sm.Map[b]]
+			a, b = v, a
 		}
 		cost /= float64(len(verse.Verse))
 		total += cost
