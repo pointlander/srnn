@@ -358,8 +358,8 @@ func Inference() {
 
 	a, b := 'h', 'T'
 	buffer := markov[sm.Map[a]][sm.Map[b]]
-	fmt.Printf(string(b))
-	fmt.Printf(string(a))
+	print(string(b))
+	print(string(a))
 	for i := 0; i < 4*128; i++ {
 		for k1, value1 := range buffer {
 			sum[k1] = .9*sum[k1] + .1*value1
@@ -419,7 +419,7 @@ func Inference() {
 			sum += symbols[j]
 			if sum > selected {
 				v = sm.Inv[j]
-				fmt.Printf(string(v))
+				print(string(v))
 				break
 			}
 		}
@@ -427,4 +427,5 @@ func Inference() {
 		buffer = markov[sm.Map[a]][sm.Map[b]]
 		a, b = v, a
 	}
+	print("\n")
 }
