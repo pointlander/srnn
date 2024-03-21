@@ -187,9 +187,9 @@ func main() {
 			for i, v := range verse.Verse {
 				if buffer != nil {
 					for k1, value1 := range buffer {
-						sum[k1] += value1
+						sum[k1] = .9*sum[k1] + .1*value1
 						for k2, value2 := range buffer {
-							sumSquared[k1*sm.Width+k2] += value1 * value2
+							sumSquared[k1*sm.Width+k2] = .9*sumSquared[k1*sm.Width+k2] + .1*value1*value2
 						}
 					}
 					n := float32(i)
@@ -356,8 +356,9 @@ func Inference() {
 	l1 := tf64.Sigmoid(tf64.Add(tf64.Mul(set.Get("w1"), input.Meta()), set.Get("b1")))
 	l2 := tf64.Softmax(tf64.Hadamard(tf64.Add(tf64.Mul(set.Get("w2"), l1), set.Get("b2")), temp.Meta()))
 
-	a, b := 'T', rune(0)
+	a, b := 'h', 'T'
 	buffer := markov[sm.Map[a]][sm.Map[b]]
+	fmt.Printf(string(b))
 	fmt.Printf(string(a))
 	for i := 0; i < 4*128; i++ {
 		for k1, value1 := range buffer {
