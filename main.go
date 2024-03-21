@@ -5,6 +5,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"math"
 	"math/rand"
@@ -38,25 +39,33 @@ const (
 	StateTotal
 )
 
+var (
+	// FlagInference inference mode
+	FlagInference = flag.String("infer", "", "inference mode")
+)
+
 // SymbolMap maps symbols
 type SymbolMap struct {
 	Map   map[rune]int
+	Inv   map[int]rune
 	Width int
 }
 
 // NewSymbolMap creates a new symbol map
 func NewSymbolMap(verses []bible.Verse) SymbolMap {
-	m, width := make(map[rune]int), 0
+	m, i, width := make(map[rune]int), make(map[int]rune), 0
 	for _, verse := range verses {
 		for _, s := range verse.Verse {
 			if _, ok := m[s]; !ok {
 				m[s] = width
+				i[width] = s
 				width++
 			}
 		}
 	}
 	return SymbolMap{
 		Map:   m,
+		Inv:   i,
 		Width: width,
 	}
 }
@@ -94,6 +103,13 @@ func (s SymbolMap) Markov(verses []bible.Verse) [][][]float32 {
 }
 
 func main() {
+	flag.Parse()
+
+	if *FlagInference != "" {
+		Inference()
+		return
+	}
+
 	seed := int64(1)
 	rng := rand.New(rand.NewSource(seed))
 
@@ -143,140 +159,147 @@ func main() {
 	}
 
 	points := make(plotter.XYs, 0, 8)
-	epoch := 0
-	total := 0.0
-	pow := func(x float64) float64 {
-		y := math.Pow(x, float64(epoch+1))
-		if math.IsNaN(y) || math.IsInf(y, 0) {
-			return 0
-		}
-		return y
-	}
-	for x, verse := range verses {
-		a, b := rune(0), rune(0)
-		for y := range sum {
-			sum[y] = 0
-		}
-		for y := range sumSquared {
-			sumSquared[y] = 0
-		}
-		buffer, cost := []float32{}, 0.0
-		set.Zero()
-		for _, v := range verse.Verse {
-			if buffer != nil {
-				for k1, value1 := range buffer {
-					sum[k1] += value1
-					for k2, value2 := range buffer {
-						sumSquared[k1*sm.Width+k2] += value1 * value2
-					}
-				}
-				n := float32(v)
-				s := float32(0)
-				for k, value := range sum {
-					mean[k] = value / n
-					s += mean[k]
-				}
-				t := 0
-				for _, value := range mean {
-					if s > 0 {
-						input.X[t] = float64(value / s)
-					} else {
-						input.X[t] = 0
-					}
-					t++
-				}
-				s = 0
-				for k, value := range sumSquared {
-					stddev[k] = float32(math.Sqrt(float64((value / n) - mean[k/sm.Width]*mean[k%sm.Width])))
-					s += stddev[k]
-				}
-				for _, value := range stddev {
-					if s > 0 {
-						input.X[t] = float64(value / s)
-					} else {
-						input.X[t] = 0
-					}
-					t++
-				}
-				s = 0
-				for _, value := range buffer {
-					s += value
-				}
-				for _, value := range buffer {
-					if s > 0 {
-						input.X[t] = float64(value / s)
-					} else {
-						input.X[t] = 0
-					}
-					t++
-				}
-				for k := range output.X {
-					output.X[k] = 0
-				}
-				output.X[sm.Map[v]] = 1
-				cost += tf64.Gradient(loss).X[0]
+	for epoch := 0; epoch < 7; epoch++ {
+		pow := func(x float64) float64 {
+			y := math.Pow(x, float64(epoch+1))
+			if math.IsNaN(y) || math.IsInf(y, 0) {
+				return 0
 			}
-			buffer = markov[sm.Map[a]][sm.Map[b]]
-			a, b = v, a
+			return y
 		}
-		cost /= float64(len(verse.Verse))
-		total += cost
-		fmt.Println(x, cost)
-		points = append(points, plotter.XY{X: float64(x), Y: float64(cost)})
 
-		norm := 0.0
-		for _, p := range set.Weights {
-			for _, d := range p.D {
-				norm += d * d
-			}
+		for i := range verses {
+			j := i + rng.Intn(len(verses)-i)
+			verses[i], verses[j] = verses[j], verses[i]
 		}
-		norm = math.Sqrt(norm)
-		b1, b2 := pow(B1), pow(B2)
-		if norm > 1 {
-			scaling := 1 / norm
-			for _, w := range set.Weights {
-				if w.N == "w2" {
-					continue
-				}
-				for l, d := range w.D {
-					g := d * scaling
-					m := B1*w.States[StateM][l] + (1-B1)*g
-					v := B2*w.States[StateV][l] + (1-B2)*g*g
-					w.States[StateM][l] = m
-					w.States[StateV][l] = v
-					mhat := m / (1 - b1)
-					vhat := v / (1 - b2)
-					if vhat < 0 {
-						vhat = 0
-					}
-					w.X[l] -= Eta * mhat / (math.Sqrt(vhat) + 1e-8)
-				}
-			}
-		} else {
-			for _, w := range set.Weights {
-				if w.N == "w2" {
-					continue
-				}
-				for l, d := range w.D {
-					g := d
-					m := B1*w.States[StateM][l] + (1-B1)*g
-					v := B2*w.States[StateV][l] + (1-B2)*g*g
-					w.States[StateM][l] = m
-					w.States[StateV][l] = v
-					mhat := m / (1 - b1)
-					vhat := v / (1 - b2)
-					if vhat < 0 {
-						vhat = 0
-					}
-					w.X[l] -= Eta * mhat / (math.Sqrt(vhat) + 1e-8)
-				}
-			}
-		}
-	}
 
-	err = set.Save(fmt.Sprintf("weights_%d_%d.w", seed, epoch), total, epoch)
-	if err != nil {
-		panic(err)
+		total := 0.0
+		for x, verse := range verses {
+			a, b := rune(0), rune(0)
+			for y := range sum {
+				sum[y] = 0
+			}
+			for y := range sumSquared {
+				sumSquared[y] = 0
+			}
+			buffer, cost := []float32{}, 0.0
+			set.Zero()
+			for i, v := range verse.Verse {
+				if buffer != nil {
+					for k1, value1 := range buffer {
+						sum[k1] += value1
+						for k2, value2 := range buffer {
+							sumSquared[k1*sm.Width+k2] += value1 * value2
+						}
+					}
+					n := float32(i)
+					s := float32(0)
+					for k, value := range sum {
+						mean[k] = value / n
+						s += mean[k]
+					}
+					t := 0
+					for _, value := range mean {
+						if s > 0 {
+							input.X[t] = float64(value / s)
+						} else {
+							input.X[t] = 0
+						}
+						t++
+					}
+					s = 0
+					for k, value := range sumSquared {
+						stddev[k] = float32(math.Sqrt(float64((value / n) - mean[k/sm.Width]*mean[k%sm.Width])))
+						s += stddev[k]
+					}
+					for _, value := range stddev {
+						if s > 0 {
+							input.X[t] = float64(value / s)
+						} else {
+							input.X[t] = 0
+						}
+						t++
+					}
+					s = 0
+					for _, value := range buffer {
+						s += value
+					}
+					for _, value := range buffer {
+						if s > 0 {
+							input.X[t] = float64(value / s)
+						} else {
+							input.X[t] = 0
+						}
+						t++
+					}
+					for k := range output.X {
+						output.X[k] = 0
+					}
+					output.X[sm.Map[v]] = 1
+					cost += tf64.Gradient(loss).X[0]
+				}
+				buffer = markov[sm.Map[a]][sm.Map[b]]
+				a, b = v, a
+			}
+			cost /= float64(len(verse.Verse))
+			total += cost
+			fmt.Println(x, cost)
+			points = append(points, plotter.XY{X: float64(x), Y: float64(cost)})
+
+			norm := 0.0
+			for _, p := range set.Weights {
+				for _, d := range p.D {
+					norm += d * d
+				}
+			}
+			norm = math.Sqrt(norm)
+			b1, b2 := pow(B1), pow(B2)
+			if norm > 1 {
+				scaling := 1 / norm
+				for _, w := range set.Weights {
+					if w.N == "w2" {
+						continue
+					}
+					for l, d := range w.D {
+						g := d * scaling
+						m := B1*w.States[StateM][l] + (1-B1)*g
+						v := B2*w.States[StateV][l] + (1-B2)*g*g
+						w.States[StateM][l] = m
+						w.States[StateV][l] = v
+						mhat := m / (1 - b1)
+						vhat := v / (1 - b2)
+						if vhat < 0 {
+							vhat = 0
+						}
+						w.X[l] -= Eta * mhat / (math.Sqrt(vhat) + 1e-8)
+					}
+				}
+			} else {
+				for _, w := range set.Weights {
+					if w.N == "w2" {
+						continue
+					}
+					for l, d := range w.D {
+						g := d
+						m := B1*w.States[StateM][l] + (1-B1)*g
+						v := B2*w.States[StateV][l] + (1-B2)*g*g
+						w.States[StateM][l] = m
+						w.States[StateV][l] = v
+						mhat := m / (1 - b1)
+						vhat := v / (1 - b2)
+						if vhat < 0 {
+							vhat = 0
+						}
+						w.X[l] -= Eta * mhat / (math.Sqrt(vhat) + 1e-8)
+					}
+				}
+			}
+		}
+
+		err = set.Save(fmt.Sprintf("weights_%d_%d.w", seed, epoch), total, epoch)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	p := plot.New()
@@ -296,5 +319,111 @@ func main() {
 	err = p.Save(8*vg.Inch, 8*vg.Inch, "epochs.png")
 	if err != nil {
 		panic(err)
+	}
+}
+
+func Inference() {
+	seed := int64(1)
+	rng := rand.New(rand.NewSource(seed))
+
+	bible, err := bible.Load()
+	if err != nil {
+		panic(err)
+	}
+	verses := bible.GetVerses()
+	sm := NewSymbolMap(verses)
+	markov := sm.Markov(verses)
+	sum, sumSquared := make([]float32, sm.Width), make([]float32, sm.Width*sm.Width)
+	mean, stddev := make([]float32, sm.Width), make([]float32, sm.Width*sm.Width)
+
+	input := tf64.NewV(sm.Width*sm.Width+2*sm.Width, 1)
+	input.X = input.X[:cap(input.X)]
+
+	name := *FlagInference
+	set := tf64.NewSet()
+	cost, epoch, err := set.Open(name)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(name, cost, epoch)
+
+	t := .5
+	temp := tf64.NewV(sm.Width, 1)
+	for i := 0; i < sm.Width; i++ {
+		temp.X = append(temp.X, 1/t)
+	}
+
+	l1 := tf64.Sigmoid(tf64.Add(tf64.Mul(set.Get("w1"), input.Meta()), set.Get("b1")))
+	l2 := tf64.Softmax(tf64.Hadamard(tf64.Add(tf64.Mul(set.Get("w2"), l1), set.Get("b2")), temp.Meta()))
+
+	a, b := 'T', rune(0)
+	buffer := markov[sm.Map[a]][sm.Map[b]]
+	fmt.Printf(string(a))
+	for i := 0; i < 4*128; i++ {
+		for k1, value1 := range buffer {
+			sum[k1] += value1
+			for k2, value2 := range buffer {
+				sumSquared[k1*sm.Width+k2] += value1 * value2
+			}
+		}
+		n := float32(i)
+		s := float32(0)
+		for k, value := range sum {
+			mean[k] = value / n
+			s += mean[k]
+		}
+		t := 0
+		for _, value := range mean {
+			if s > 0 {
+				input.X[t] = float64(value / s)
+			} else {
+				input.X[t] = 0
+			}
+			t++
+		}
+		s = 0
+		for k, value := range sumSquared {
+			stddev[k] = float32(math.Sqrt(float64((value / n) - mean[k/sm.Width]*mean[k%sm.Width])))
+			s += stddev[k]
+		}
+		for _, value := range stddev {
+			if s > 0 {
+				input.X[t] = float64(value / s)
+			} else {
+				input.X[t] = 0
+			}
+			t++
+		}
+		s = 0
+		for _, value := range buffer {
+			s += value
+		}
+		for _, value := range buffer {
+			if s > 0 {
+				input.X[t] = float64(value / s)
+			} else {
+				input.X[t] = 0
+			}
+			t++
+		}
+
+		symbols := []float64{}
+		selected, sum := rng.Float64(), 0.0
+		l2(func(a *tf64.V) bool {
+			symbols = a.X
+			return true
+		})
+		v := rune(0)
+		for j := 0; j < sm.Width; j++ {
+			sum += symbols[j]
+			if sum > selected {
+				v = sm.Inv[j]
+				fmt.Printf(string(v))
+				break
+			}
+		}
+
+		buffer = markov[sm.Map[a]][sm.Map[b]]
+		a, b = v, a
 	}
 }
