@@ -108,8 +108,14 @@ func main() {
 	if *FlagInference != "" {
 		Inference()
 		return
+	} else {
+		Learn()
+		return
 	}
+}
 
+// Learn learns the model
+func Learn() {
 	seed := int64(1)
 	rng := rand.New(rand.NewSource(seed))
 
