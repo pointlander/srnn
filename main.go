@@ -21,12 +21,6 @@ import (
 const (
 	// NumberOfVerses is the number of verses in the bible
 	NumberOfVerses = 31102
-	// Symbols is the number of symbols
-	Symbols = 256
-	// Space is the state space of the Println
-	Space = 256
-	// Width is the width of the neural network
-	Width = Symbols + Space
 	// B1 exponential decay of the rate for the first moment estimates
 	B1 = 0.8
 	// B2 exponential decay rate for the second-moment estimates
@@ -44,14 +38,43 @@ const (
 	StateTotal
 )
 
-// Markov computes a markov model of the bible
-func Markov(verses []bible.Verse) *[256][256][256]float32 {
-	markov := [256][256][256]float32{}
+// SymbolMap maps symbols
+type SymbolMap struct {
+	Map   map[rune]int
+	Width int
+}
+
+// NewSymbolMap creates a new symbol map
+func NewSymbolMap(verses []bible.Verse) SymbolMap {
+	m, width := make(map[rune]int), 0
 	for _, verse := range verses {
-		a, b := 0, 0
+		for _, s := range verse.Verse {
+			if _, ok := m[s]; !ok {
+				m[s] = width
+				width++
+			}
+		}
+	}
+	return SymbolMap{
+		Map:   m,
+		Width: width,
+	}
+}
+
+// Markov computes a markov model of the bible
+func (s SymbolMap) Markov(verses []bible.Verse) [][][]float32 {
+	markov := make([][][]float32, s.Width)
+	for i := range markov {
+		markov[i] = make([][]float32, s.Width)
+		for j := range markov[i] {
+			markov[i][j] = make([]float32, s.Width)
+		}
+	}
+	for _, verse := range verses {
+		a, b := rune(0), rune(0)
 		for _, v := range verse.Verse {
-			markov[a][b][v]++
-			a, b = int(v), a
+			markov[s.Map[a]][s.Map[b]][s.Map[v]]++
+			a, b = v, a
 		}
 	}
 	for i := range markov {
@@ -67,7 +90,7 @@ func Markov(verses []bible.Verse) *[256][256][256]float32 {
 			}
 		}
 	}
-	return &markov
+	return markov
 }
 
 func main() {
@@ -79,30 +102,21 @@ func main() {
 		panic(err)
 	}
 	verses := bible.GetVerses()
-	sym, next := make(map[rune]int), 0
-	for _, verse := range verses {
-		for _, s := range verse.Verse {
-			if _, ok := sym[s]; !ok {
-				sym[s] = next
-				next++
-			}
-		}
-	}
-	fmt.Println(next, next*next)
-	markov := Markov(verses)
-	sum, sumSquared := make([]float32, Symbols), make([]float32, Symbols*Symbols)
-	mean, stddev := make([]float32, Symbols), make([]float32, Symbols*Symbols)
+	sm := NewSymbolMap(verses)
+	markov := sm.Markov(verses)
+	sum, sumSquared := make([]float32, sm.Width), make([]float32, sm.Width*sm.Width)
+	mean, stddev := make([]float32, sm.Width), make([]float32, sm.Width*sm.Width)
 
-	input := tf64.NewV(Symbols*Symbols+2*Symbols, 1)
+	input := tf64.NewV(sm.Width*sm.Width+2*sm.Width, 1)
 	input.X = input.X[:cap(input.X)]
-	output := tf64.NewV(Symbols, 1)
+	output := tf64.NewV(sm.Width, 1)
 	output.X = output.X[:cap(output.X)]
 
 	set := tf64.NewSet()
-	set.Add("w1", Symbols*Symbols+2*Symbols, 4*Symbols)
-	set.Add("b1", 4*Symbols)
-	set.Add("w2", 4*Symbols, Symbols)
-	set.Add("b2", Symbols)
+	set.Add("w1", sm.Width*sm.Width+2*sm.Width, 4*sm.Width)
+	set.Add("b1", 4*sm.Width)
+	set.Add("w2", 4*sm.Width, sm.Width)
+	set.Add("b2", sm.Width)
 
 	l1 := tf64.Sigmoid(tf64.Add(tf64.Mul(set.Get("w1"), input.Meta()), set.Get("b1")))
 	loss := tf64.CrossEntropy(tf64.Softmax(tf64.Add(tf64.Mul(set.Get("w2"), l1), set.Get("b2"))), output.Meta())
@@ -139,25 +153,26 @@ func main() {
 		return y
 	}
 	for x, verse := range verses {
-		a, b := 0, 0
+		a, b := rune(0), rune(0)
 		for y := range sum {
 			sum[y] = 0
 		}
 		for y := range sumSquared {
 			sumSquared[y] = 0
 		}
-		buffer, index, n := make([]*[256]float32, 256), 0, 0
+		buffer, index, n := make([][]float32, 256), 0, 0
 		cost := 0.0
 		set.Zero()
-		for vv, v := range verse.Verse[:len(verse.Verse)-1] {
-			buffer[index] = &markov[a][b]
-			a, b = int(v), a
+		symbols := []rune(verse.Verse)
+		for vv, v := range symbols[:len(symbols)-1] {
+			buffer[index] = markov[sm.Map[a]][sm.Map[b]]
+			a, b = v, a
 			if n > 0 {
 				i := (index + 256 - 1) % 256
-				for k1, value1 := range *buffer[i] {
+				for k1, value1 := range buffer[i] {
 					sum[k1] += value1
-					for k2, value2 := range *buffer[i] {
-						sumSquared[k1*256+k2] += value1 * value2
+					for k2, value2 := range buffer[i] {
+						sumSquared[k1*sm.Width+k2] += value1 * value2
 					}
 				}
 				n := float32(n)
@@ -177,7 +192,7 @@ func main() {
 				}
 				s = 0
 				for k, value := range sumSquared {
-					stddev[k] = float32(math.Sqrt(float64((value / n) - mean[k/256]*mean[k%256])))
+					stddev[k] = float32(math.Sqrt(float64((value / n) - mean[k/sm.Width]*mean[k%sm.Width])))
 					s += stddev[k]
 				}
 				for _, value := range stddev {
@@ -203,7 +218,7 @@ func main() {
 				for k := range output.X {
 					output.X[k] = 0
 				}
-				output.X[verse.Verse[vv+1]] = 1
+				output.X[sm.Map[symbols[vv+1]]] = 1
 				cost += tf64.Gradient(loss).X[0]
 			}
 
