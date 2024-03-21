@@ -362,9 +362,9 @@ func Inference() {
 	fmt.Printf(string(a))
 	for i := 0; i < 4*128; i++ {
 		for k1, value1 := range buffer {
-			sum[k1] += value1
+			sum[k1] = .9*sum[k1] + .1*value1
 			for k2, value2 := range buffer {
-				sumSquared[k1*sm.Width+k2] += value1 * value2
+				sumSquared[k1*sm.Width+k2] = .9*sumSquared[k1*sm.Width+k2] + .1*value1*value2
 			}
 		}
 		n := float32(i)
