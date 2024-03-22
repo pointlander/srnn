@@ -191,6 +191,18 @@ func main() {
 	}
 	total := 0
 	temp := float32(1 / .01)
+	initial := "And the LORD said"
+	for _, v := range initial {
+		a, b = v, a
+		if total < 256 {
+			total++
+		} else {
+			context[sm.Map[buffer[index]]]--
+		}
+		buffer[index] = v
+		context[sm.Map[v]]++
+		index = (index + 1) % 256
+	}
 	for i := 0; i < 256; i++ {
 		m := markov[sm.Map[a]][sm.Map[b]]
 		output := make([]float32, sm.Width)
