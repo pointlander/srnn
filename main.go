@@ -28,6 +28,8 @@ const (
 	B2 = 0.89
 	// Eta is the learning rate
 	Eta = .01
+	// S is the scaling factor for the softmax
+	S = 1.0 - 1e-300
 )
 
 const (
@@ -107,6 +109,24 @@ func (s SymbolMap) Markov(verses []bible.Verse) [][][]float32 {
 	return markov
 }
 
+func softmax(values []float32) {
+	max := float32(0.0)
+	for _, v := range values {
+		if v > max {
+			max = v
+		}
+	}
+	s := max * S
+	sum := float32(0.0)
+	for j, value := range values {
+		values[j] = float32(math.Exp(float64(value - s)))
+		sum += values[j]
+	}
+	for j, value := range values {
+		values[j] = value / sum
+	}
+}
+
 func main() {
 	flag.Parse()
 
@@ -119,6 +139,7 @@ func main() {
 	}
 
 	// markov multivariate
+	rng := rand.New(rand.NewSource(1))
 	bible, err := bible.Load()
 	if err != nil {
 		panic(err)
@@ -146,7 +167,9 @@ func main() {
 		for _, v := range verse.Verse {
 			m := markov[sm.Map[a]][sm.Map[b]][sm.Map[v]]
 			for i := range m {
-				m[i] += context[i] / float32(total)
+				if total > 0 {
+					m[i] += context[i] / float32(total)
+				}
 			}
 
 			a, b = v, a
@@ -160,6 +183,52 @@ func main() {
 			index = (index + 1) % 256
 		}
 	}
+
+	a, b := rune(0), rune(0)
+	index, context, buffer := 0, make([]float32, sm.Width), make([]rune, 256)
+	for i := range buffer {
+		buffer[i] = -1
+	}
+	total := 0
+	temp := float32(1 / .01)
+	for i := 0; i < 256; i++ {
+		m := markov[sm.Map[a]][sm.Map[b]]
+		output := make([]float32, sm.Width)
+		for j := range m {
+			ab, aa, bb := float32(0), float32(0), float32(0)
+			for k, b := range m[j] {
+				a := context[k]
+				ab += a * b
+				aa += a * a
+				bb += b * b
+			}
+			if aa > 0 && bb > 0 {
+				output[j] = temp * ab / (float32(math.Sqrt(float64(aa)) * math.Sqrt(float64(bb))))
+			}
+		}
+		v := rune(0)
+		softmax(output)
+		t := rng.Float32()
+		sum := float32(0)
+		for j, value := range output {
+			sum += value
+			if sum > t {
+				v = sm.Inv[j]
+				break
+			}
+		}
+		print(string(v))
+		a, b = v, a
+		if total < 256 {
+			total++
+		} else {
+			context[sm.Map[buffer[index]]]--
+		}
+		buffer[index] = v
+		context[sm.Map[v]]++
+		index = (index + 1) % 256
+	}
+	print("\n")
 }
 
 // Learn learns the model
