@@ -56,6 +56,9 @@ type SymbolMap struct {
 // NewSymbolMap creates a new symbol map
 func NewSymbolMap(verses []bible.Verse) SymbolMap {
 	m, i, width := make(map[rune]int), make(map[int]rune), 0
+	m[0] = width
+	i[width] = 0
+	width++
 	for _, verse := range verses {
 		for _, s := range verse.Verse {
 			if _, ok := m[s]; !ok {
@@ -130,6 +133,31 @@ func main() {
 			for k := range markov[i][j] {
 				markov[i][j][k] = make([]float32, sm.Width)
 			}
+		}
+	}
+
+	for _, verse := range verses {
+		a, b := rune(0), rune(0)
+		index, context, buffer := 0, make([]float32, sm.Width), make([]rune, 256)
+		for i := range buffer {
+			buffer[i] = -1
+		}
+		total := 0
+		for _, v := range verse.Verse {
+			m := markov[sm.Map[a]][sm.Map[b]][sm.Map[v]]
+			for i := range m {
+				m[i] += context[i] / float32(total)
+			}
+
+			a, b = v, a
+			if total < 256 {
+				total++
+			} else {
+				context[sm.Map[buffer[index]]]--
+			}
+			buffer[index] = v
+			context[sm.Map[v]]++
+			index = (index + 1) % 256
 		}
 	}
 }
