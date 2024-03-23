@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/pointlander/compress"
 	"github.com/pointlander/datum/bible"
 	"github.com/pointlander/gradient/tf64"
 	"gonum.org/v1/plot"
@@ -158,8 +159,28 @@ func main() {
 	} else if *FlagLearn == "srnn" {
 		Learn()
 		return
+	} else if *FlagLearn == "markov" {
+		Markov()
+		return
 	}
 
+	bible, err := bible.Load()
+	if err != nil {
+		panic(err)
+	}
+	verses := bible.GetVerses()
+	for _, verse := range verses {
+		factory := compress.NewCDF16(2, false)
+		cdf := factory(256)
+		for _, v := range verse.Verse {
+			cdf.Update(uint16(v))
+		}
+	}
+	//fmt.Println(cdf.Model())
+	fmt.Println(compress.CDF16Scale)
+}
+
+func Markov() {
 	const ContextLength = 256
 
 	// markov multivariate

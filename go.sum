@@ -40,6 +40,10 @@ github.com/google/go-cmp v0.4.0/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/pointlander/compress v1.1.0 h1:5fUcQV2qEHvk0OpILH6eltwluN5VnwiYrkc1wjGUHnU=
+github.com/pointlander/compress v1.1.0/go.mod h1:q5NXNGzqj5uPnVuhGkZfmgHqNUhf15VLi6L9kW0VEc0=
+github.com/pointlander/compress v1.1.1-0.20230129195249-46dfb34ef5b9 h1:BWC+gebHpLgrzTuYLVTh56mVVIHsD2weMqMUzdRZ880=
+github.com/pointlander/compress v1.1.1-0.20230129195249-46dfb34ef5b9/go.mod h1:knL5MVK1bDuI0YLbILQ2vHc92jcnoFbcUveNyHmc82E=
 github.com/pointlander/datum/bible v0.0.0-20200802052503-0ee610caba95 h1:r9nGTxfUCT1rIykjHUpxyVV/qwk7fpehUOTJ3l6yUpE=
 github.com/pointlander/datum/bible v0.0.0-20200802052503-0ee610caba95/go.mod h1:b2umfZe9qgshsHmKqBKpSwt5+omF6humO+oLoE94W+c=
 github.com/pointlander/gradient v0.0.0-20240226214843-e3d2a19564fd h1:hYQdGYT9YDpc+2MZIZYMhNdvjhBs/KWk0D0bsamzvF4=
