@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"os"
 	"strings"
 
 	"github.com/pointlander/datum/bible"
@@ -64,8 +65,26 @@ func NewSymbolMap(verses []bible.Verse) SymbolMap {
 	m[0] = width
 	i[width] = 0
 	width++
-	for _, verse := range verses {
-		for _, s := range verse.Verse {
+	files := []string{
+		"10.txt.utf-8",
+		"1342.txt.utf-8",
+		"145.txt.utf-8",
+		"1513.txt.utf-8",
+		"2641.txt.utf-8",
+		"2701.txt.utf-8",
+		"37106.txt.utf-8",
+		"84.txt.utf-8",
+	}
+	for _, book := range files {
+		book = "books/" + book
+		fmt.Println(book)
+		data, err := os.ReadFile(book)
+		if err != nil {
+			panic(err)
+		}
+		verse := string(data)
+
+		for _, s := range verse {
 			if _, ok := m[s]; !ok {
 				m[s] = width
 				i[width] = s
@@ -141,6 +160,8 @@ func main() {
 		return
 	}
 
+	const ContextLength = 256
+
 	// markov multivariate
 	rng := rand.New(rand.NewSource(1))
 	bible, err := bible.Load()
@@ -150,9 +171,26 @@ func main() {
 	verses := bible.GetVerses()
 	sm := NewSymbolMap(verses)
 	markov := make(map[Context][][]float32)
-	for _, verse := range verses {
+	files := []string{
+		"10.txt.utf-8",
+		"1342.txt.utf-8",
+		"145.txt.utf-8",
+		"1513.txt.utf-8",
+		"2641.txt.utf-8",
+		"2701.txt.utf-8",
+		"37106.txt.utf-8",
+		"84.txt.utf-8",
+	}
+	for _, book := range files {
+		book = "books/" + book
+		fmt.Println(book)
+		data, err := os.ReadFile(book)
+		if err != nil {
+			panic(err)
+		}
+		verse := string(data)
 		ctxt := Context{}
-		index, context, buffer := 0, make([]float32, sm.Width), make([]rune, 256)
+		index, context, buffer := 0, make([]float32, sm.Width), make([]rune, ContextLength)
 		for i := range buffer {
 			buffer[i] = -1
 		}
@@ -169,12 +207,14 @@ func main() {
 			for i := range l2 {
 				if total > 0 {
 					l2[i] += context[i] / float32(total)
+				} else {
+					l2[i] += context[i]
 				}
 			}
 			l1[sm.Map[v]] = l2
 			markov[ctxt] = l1
 		}
-		for _, v := range verse.Verse {
+		for _, v := range verse {
 			learn(v, ctxt)
 			cp := ctxt
 			cp[1] = 0
@@ -187,18 +227,21 @@ func main() {
 			}
 			buffer[index] = v
 			context[sm.Map[v]]++
-			index = (index + 1) % 256
+			if _, ok := sm.Map[v]; !ok {
+				panic("symbol not found")
+			}
+			index = (index + 1) % ContextLength
 		}
 	}
 
 	ctxt := Context{}
-	index, context, buffer := 0, make([]float32, sm.Width), make([]rune, 256)
+	index, context, buffer := 0, make([]float32, sm.Width), make([]rune, ContextLength)
 	for i := range buffer {
 		buffer[i] = -1
 	}
 	total := 0
 	temp := float32(1 / .01)
-	initial := "And the LORD said"
+	initial := "The LORD said"
 	for _, v := range initial {
 		ctxt[0], ctxt[1] = v, ctxt[0]
 		if total < 256 {
@@ -208,7 +251,7 @@ func main() {
 		}
 		buffer[index] = v
 		context[sm.Map[v]]++
-		index = (index + 1) % 256
+		index = (index + 1) % ContextLength
 	}
 	for i := 0; i < 256; i++ {
 		m := markov[ctxt]
@@ -256,7 +299,7 @@ func main() {
 		}
 		buffer[index] = v
 		context[sm.Map[v]]++
-		index = (index + 1) % 256
+		index = (index + 1) % ContextLength
 	}
 	print("\n")
 }
