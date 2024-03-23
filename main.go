@@ -157,7 +157,7 @@ func main() {
 			buffer[i] = -1
 		}
 		total := 0
-		for _, v := range verse.Verse {
+		learn := func(v rune, ctxt Context) {
 			l1 := markov[ctxt]
 			if l1 == nil {
 				l1 = make([][]float32, sm.Width)
@@ -173,7 +173,12 @@ func main() {
 			}
 			l1[sm.Map[v]] = l2
 			markov[ctxt] = l1
-
+		}
+		for _, v := range verse.Verse {
+			learn(v, ctxt)
+			cp := ctxt
+			cp[1] = 0
+			learn(v, cp)
 			ctxt[0], ctxt[1] = v, ctxt[0]
 			if total < 256 {
 				total++
@@ -207,6 +212,17 @@ func main() {
 	}
 	for i := 0; i < 256; i++ {
 		m := markov[ctxt]
+		count := 0
+		for j := range m {
+			if m[j] != nil {
+				count++
+			}
+		}
+		if count < 1 {
+			cp := ctxt
+			cp[1] = 0
+			m = markov[cp]
+		}
 		output := make([]float32, sm.Width)
 		for j := range m {
 			ab, aa, bb := float32(0), float32(0), float32(0)
