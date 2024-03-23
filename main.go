@@ -48,6 +48,9 @@ var (
 	FlagInference = flag.String("infer", "", "inference mode")
 )
 
+// Context is a markov model context
+type Context [2]rune
+
 // SymbolMap maps symbols
 type SymbolMap struct {
 	Map   map[rune]int
@@ -146,33 +149,32 @@ func main() {
 	}
 	verses := bible.GetVerses()
 	sm := NewSymbolMap(verses)
-	markov := make([][][][]float32, sm.Width)
-	for i := range markov {
-		markov[i] = make([][][]float32, sm.Width)
-		for j := range markov[i] {
-			markov[i][j] = make([][]float32, sm.Width)
-			for k := range markov[i][j] {
-				markov[i][j][k] = make([]float32, sm.Width)
-			}
-		}
-	}
-
+	markov := make(map[Context][][]float32)
 	for _, verse := range verses {
-		a, b := rune(0), rune(0)
+		ctxt := Context{}
 		index, context, buffer := 0, make([]float32, sm.Width), make([]rune, 256)
 		for i := range buffer {
 			buffer[i] = -1
 		}
 		total := 0
 		for _, v := range verse.Verse {
-			m := markov[sm.Map[a]][sm.Map[b]][sm.Map[v]]
-			for i := range m {
+			l1 := markov[ctxt]
+			if l1 == nil {
+				l1 = make([][]float32, sm.Width)
+			}
+			l2 := l1[sm.Map[v]]
+			if l2 == nil {
+				l2 = make([]float32, sm.Width)
+			}
+			for i := range l2 {
 				if total > 0 {
-					m[i] += context[i] / float32(total)
+					l2[i] += context[i] / float32(total)
 				}
 			}
+			l1[sm.Map[v]] = l2
+			markov[ctxt] = l1
 
-			a, b = v, a
+			ctxt[0], ctxt[1] = v, ctxt[0]
 			if total < 256 {
 				total++
 			} else {
@@ -184,7 +186,7 @@ func main() {
 		}
 	}
 
-	a, b := rune(0), rune(0)
+	ctxt := Context{}
 	index, context, buffer := 0, make([]float32, sm.Width), make([]rune, 256)
 	for i := range buffer {
 		buffer[i] = -1
@@ -193,7 +195,7 @@ func main() {
 	temp := float32(1 / .01)
 	initial := "And the LORD said"
 	for _, v := range initial {
-		a, b = v, a
+		ctxt[0], ctxt[1] = v, ctxt[0]
 		if total < 256 {
 			total++
 		} else {
@@ -204,7 +206,7 @@ func main() {
 		index = (index + 1) % 256
 	}
 	for i := 0; i < 256; i++ {
-		m := markov[sm.Map[a]][sm.Map[b]]
+		m := markov[ctxt]
 		output := make([]float32, sm.Width)
 		for j := range m {
 			ab, aa, bb := float32(0), float32(0), float32(0)
@@ -230,7 +232,7 @@ func main() {
 			}
 		}
 		print(string(v))
-		a, b = v, a
+		ctxt[0], ctxt[1] = v, ctxt[0]
 		if total < 256 {
 			total++
 		} else {
