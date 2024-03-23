@@ -164,20 +164,161 @@ func main() {
 		return
 	}
 
+	seed := int64(1)
+	rng := rand.New(rand.NewSource(seed))
+
 	bible, err := bible.Load()
 	if err != nil {
 		panic(err)
 	}
 	verses := bible.GetVerses()
-	for _, verse := range verses {
-		factory := compress.NewCDF16(2, false)
-		cdf := factory(256)
-		for _, v := range verse.Verse {
-			cdf.Update(uint16(v))
+
+	input := tf64.NewV(256, 1)
+	input.X = input.X[:cap(input.X)]
+	output := tf64.NewV(256, 1)
+	output.X = output.X[:cap(output.X)]
+
+	set := tf64.NewSet()
+	set.Add("w1", 256, 256)
+	set.Add("b1", 256)
+	set.Add("w2", 256, 256)
+	set.Add("b2", 256)
+
+	l1 := tf64.Sigmoid(tf64.Add(tf64.Mul(set.Get("w1"), input.Meta()), set.Get("b1")))
+	loss := tf64.CrossEntropy(tf64.Softmax(tf64.Add(tf64.Mul(set.Get("w2"), l1), set.Get("b2"))), output.Meta())
+
+	for i := range set.Weights {
+		w := set.Weights[i]
+		size := w.S[0] * w.S[1]
+		if strings.HasPrefix(w.N, "b") {
+			w.X = w.X[:size]
+			w.States = make([][]float64, StateTotal)
+			for i := range w.States {
+				w.States[i] = make([]float64, len(w.X))
+			}
+			continue
+		}
+		factor := math.Sqrt(2.0 / float64(w.S[0]))
+		for i := 0; i < size; i++ {
+			w.X = append(w.X, rng.NormFloat64()*factor)
+		}
+		w.States = make([][]float64, StateTotal)
+		for i := range w.States {
+			w.States[i] = make([]float64, len(w.X))
 		}
 	}
-	//fmt.Println(cdf.Model())
-	fmt.Println(compress.CDF16Scale)
+
+	points := make(plotter.XYs, 0, 8)
+	for epoch := 0; epoch < 7; epoch++ {
+		pow := func(x float64) float64 {
+			y := math.Pow(x, float64(epoch+1))
+			if math.IsNaN(y) || math.IsInf(y, 0) {
+				return 0
+			}
+			return y
+		}
+
+		for i := range verses {
+			j := i + rng.Intn(len(verses)-i)
+			verses[i], verses[j] = verses[j], verses[i]
+		}
+
+		total := 0.0
+		for x, verse := range verses {
+			factory := compress.NewCDF16(2, false)
+			cdf := factory(256)
+			set.Zero()
+			cost := 0.0
+			for _, v := range verse.Verse {
+				model := cdf.Model()
+				for k := range input.X {
+					input.X[k] = float64(model[k+1]-model[k]) / float64(compress.CDF16Scale)
+				}
+				for k := range output.X {
+					output.X[k] = 0
+				}
+				output.X[v] = 1
+				cost += tf64.Gradient(loss).X[0]
+				cdf.Update(uint16(v))
+			}
+			cost /= float64(len(verse.Verse))
+			total += cost
+			fmt.Println(x, cost)
+			points = append(points, plotter.XY{X: float64(x), Y: float64(cost)})
+
+			norm := 0.0
+			for _, p := range set.Weights {
+				for _, d := range p.D {
+					norm += d * d
+				}
+			}
+			norm = math.Sqrt(norm)
+			b1, b2 := pow(B1), pow(B2)
+			if norm > 1 {
+				scaling := 1 / norm
+				for _, w := range set.Weights {
+					if w.N == "w2" {
+						continue
+					}
+					for l, d := range w.D {
+						g := d * scaling
+						m := B1*w.States[StateM][l] + (1-B1)*g
+						v := B2*w.States[StateV][l] + (1-B2)*g*g
+						w.States[StateM][l] = m
+						w.States[StateV][l] = v
+						mhat := m / (1 - b1)
+						vhat := v / (1 - b2)
+						if vhat < 0 {
+							vhat = 0
+						}
+						w.X[l] -= Eta * mhat / (math.Sqrt(vhat) + 1e-8)
+					}
+				}
+			} else {
+				for _, w := range set.Weights {
+					if w.N == "w2" {
+						continue
+					}
+					for l, d := range w.D {
+						g := d
+						m := B1*w.States[StateM][l] + (1-B1)*g
+						v := B2*w.States[StateV][l] + (1-B2)*g*g
+						w.States[StateM][l] = m
+						w.States[StateV][l] = v
+						mhat := m / (1 - b1)
+						vhat := v / (1 - b2)
+						if vhat < 0 {
+							vhat = 0
+						}
+						w.X[l] -= Eta * mhat / (math.Sqrt(vhat) + 1e-8)
+					}
+				}
+			}
+		}
+
+		err = set.Save(fmt.Sprintf("weights_%d_%d.w", seed, epoch), total, epoch)
+		if err != nil {
+			panic(err)
+		}
+	}
+	p := plot.New()
+
+	p.Title.Text = "epochs vs cost"
+	p.X.Label.Text = "epochs"
+	p.Y.Label.Text = "cost"
+
+	scatter, err := plotter.NewScatter(points)
+	if err != nil {
+		panic(err)
+	}
+	scatter.GlyphStyle.Radius = vg.Length(1)
+	scatter.GlyphStyle.Shape = draw.CircleGlyph{}
+	p.Add(scatter)
+
+	err = p.Save(8*vg.Inch, 8*vg.Inch, "epochs.png")
+	if err != nil {
+		panic(err)
+	}
 }
 
 func Markov() {
