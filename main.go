@@ -189,7 +189,7 @@ func CompressInference() {
 	}
 	fmt.Println(name, cost, epoch)
 
-	t := .5
+	t := 1.0
 	temp := tf64.NewV(256, 1)
 	for i := 0; i < 256; i++ {
 		temp.X = append(temp.X, 1/t)
@@ -200,6 +200,10 @@ func CompressInference() {
 
 	factory := compress.NewCDF16(2, false)
 	cdf := factory(256)
+	initial := "And the LORD said"
+	for _, v := range initial {
+		cdf.Update(uint16(v))
+	}
 	for i := 0; i < 4*128; i++ {
 		model := cdf.Model()
 		for k := range input.X {
