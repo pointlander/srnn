@@ -48,6 +48,8 @@ var (
 	FlagLearn = flag.String("learn", "", "learn mode")
 	// FlagInference inference mode
 	FlagInference = flag.String("infer", "", "inference mode")
+	// FlagFile is a weights file
+	FlagFile = flag.String("file", "", "weights file")
 )
 
 // Context is a markov model context
@@ -153,8 +155,11 @@ func softmax(values []float32) {
 func main() {
 	flag.Parse()
 
-	if *FlagInference != "" {
+	if *FlagInference == "srnn" {
 		Inference()
+		return
+	} else if *FlagInference == "compress" {
+		CompressInference()
 		return
 	} else if *FlagLearn == "srnn" {
 		Learn()
@@ -162,8 +167,66 @@ func main() {
 	} else if *FlagLearn == "markov" {
 		Markov()
 		return
+	} else if *FlagLearn == "compress" {
+		Compress()
+		return
+	}
+}
+
+// CompressInference inference compression mode
+func CompressInference() {
+	seed := int64(1)
+	rng := rand.New(rand.NewSource(seed))
+
+	input := tf64.NewV(256, 1)
+	input.X = input.X[:cap(input.X)]
+
+	name := *FlagFile
+	set := tf64.NewSet()
+	cost, epoch, err := set.Open(name)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(name, cost, epoch)
+
+	t := .5
+	temp := tf64.NewV(256, 1)
+	for i := 0; i < 256; i++ {
+		temp.X = append(temp.X, 1/t)
 	}
 
+	l1 := tf64.Sigmoid(tf64.Add(tf64.Mul(set.Get("w1"), input.Meta()), set.Get("b1")))
+	l2 := tf64.Softmax(tf64.Hadamard(tf64.Add(tf64.Mul(set.Get("w2"), l1), set.Get("b2")), temp.Meta()))
+
+	factory := compress.NewCDF16(2, false)
+	cdf := factory(256)
+	for i := 0; i < 4*128; i++ {
+		model := cdf.Model()
+		for k := range input.X {
+			input.X[k] = float64(model[k+1]-model[k]) / float64(compress.CDF16Scale)
+		}
+		symbols := []float64{}
+		selected, sum := rng.Float64(), 0.0
+		l2(func(a *tf64.V) bool {
+			symbols = a.X
+			return true
+		})
+		v := rune(0)
+		for j := 0; j < 256; j++ {
+			sum += symbols[j]
+			if sum > selected {
+				v = rune(j)
+				print(string(v))
+				break
+			}
+		}
+		cdf.Update(uint16(v))
+	}
+	fmt.Println()
+}
+
+// Compress learns a compression based model
+func Compress() {
 	seed := int64(1)
 	rng := rand.New(rand.NewSource(seed))
 
@@ -697,7 +760,7 @@ func Inference() {
 	input := tf64.NewV(sm.Width*sm.Width+2*sm.Width, 1)
 	input.X = input.X[:cap(input.X)]
 
-	name := *FlagInference
+	name := *FlagFile
 	set := tf64.NewSet()
 	cost, epoch, err := set.Open(name)
 	if err != nil {
